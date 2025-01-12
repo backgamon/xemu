@@ -218,7 +218,9 @@ static void generate_shaders(ShaderBinding *binding)
                                  state->polygon_back_mode,
                                  state->primitive_mode,
                                  state->smooth_shading,
-                                 false);
+                                 false,
+                                 state->z_perspective || state->texture_perspective
+            );
     if (geometry_shader_code) {
         const char* geometry_shader_code_str =
              mstring_get_str(geometry_shader_code);
@@ -886,8 +888,8 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         uint32_t v[2];
         v[0] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMIN);
         v[1] = pgraph_reg_r(pg, NV_PGRAPH_ZCLIPMAX);
-        float zclip_min = *(float*)&v[0] / zmax * 2.0 - 1.0;
-        float zclip_max = *(float*)&v[1] / zmax * 2.0 - 1.0;
+        float zclip_min = *(float*)&v[0];// / zmax * 2.0 - 1.0;
+        float zclip_max = *(float*)&v[1];// / zmax * 2.0 - 1.0;
         glUniform4f(binding->clip_range_loc, 0, zmax, zclip_min, zclip_max);
     }
 
