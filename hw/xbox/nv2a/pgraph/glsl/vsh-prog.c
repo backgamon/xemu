@@ -801,7 +801,6 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
 {
     const uint32_t *tokens = (uint32_t *)state->program_data;
     unsigned int length = state->program_length;
-    bool z_perspective = state->z_perspective;
     bool texture = state->texture_perspective;
     bool vulkan = state->vulkan;
 
@@ -856,21 +855,17 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
                              "/ surfaceSize.y;\n");
     }
 
-    if (z_perspective) {
-        mstring_append(body, "  oPos.z = oPos.w;\n");
-    }
-
     mstring_append(body,
+        "  depthBuf = oPos.w;\n"
         "  if (clipRange.y != clipRange.x) {\n"
         "    oPos.z /= clipRange.y;\n"  
         "  }\n"
     );    
 
-    if (z_perspective || texture) {
-            mstring_append(body, "  oPos.xyz *= oPos.w;\n");
+    if (texture) {
+        mstring_append(body, "  oPos.xyz *= oPos.w;\n");
     } else {   
-        mstring_append(
-            body,
+        mstring_append(body,
 
         /* Correct for the perspective divide */
         "  if (oPos.w < 0.0) {\n"

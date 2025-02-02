@@ -867,7 +867,7 @@ static MString* psh_convert(struct PixelShader *ps)
     /* Depth clipping */
     /* OGL/VK zbias is applied to z coord, so we need to apply it 
      * to w coord manually when w-buffering is enabled */
-    mstring_append(clip, "float w = 1.0/gl_FragCoord.w + zbias;\n"); 
+    mstring_append(clip, "float w = depthBuf + zbias;\n"); 
     if (ps->state.vulkan) {
         mstring_append(clip, "float z = gl_FragCoord.z;\n");
     } else {
@@ -875,18 +875,30 @@ static MString* psh_convert(struct PixelShader *ps)
          * prevents floating point precission loss in OGL */
         mstring_append(clip, "float z = gl_FragCoord.z * 2.0 - 1.0;\n");
     }
+
+    const char *z = ps->state.z_perspective ? "w" : "z * clipRange.y";
     if (ps->state.clipping) {
-        if (ps->state.z_perspective) {
-            mstring_append(clip,
-                      "if (w < clipRange.z || clipRange.w < w) {\n"
-                      "  discard;\n"
-                      "}\n");
-        } else {
-            mstring_append(clip,
-                       "if (z * clipRange.y < clipRange.z || z * clipRange.y > clipRange.w) {\n"
-                       "  discard;\n"
-                       "}\n");
-        }
+        mstring_append_fmt(clip,
+            "if (%s < clipRange.z || clipRange.w < %s) {\n"
+            "  discard;\n"
+            "}\n", z, z
+        );
+    }
+    if (ps->state.near_far) {
+        /* FIXME: set correct custom clip planes 
+         * (see pgraph ZMinMaxControl tests)*/
+        mstring_append(clip,  
+            // near plane
+            "if (z * clipRange.y < clipRange.z*2.0/3.0) {\n"
+            "  discard;\n"
+            "}\n"
+            // z=n->f far plane
+            //"if (z * clipRange.y > clipRange.w*1.2) {\n"   
+            // z=inc far plane
+            "if (z * clipRange.y > clipRange.w + 2.0*(clipRange.w + clipRange.z)/(clipRange.w - clipRange.z) - 1) {\n"  
+            "  discard;\n"
+            "}\n"           
+        );        
     }
 
     /* calculate perspective-correct inputs */
