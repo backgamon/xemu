@@ -2,6 +2,7 @@
  * MCPX DSP emulator
  *
  * Copyright (c) 2015 espes
+ * Copyright (c) 2020-2025 Matt Borgerson
  *
  * Adapted from Hatari DSP M56001 emulation
  * (C) 2001-2008 ARAnyM developer team
@@ -23,17 +24,11 @@
  */
 
 #include "qemu/osdep.h"
-
-#include <stdlib.h>
-#include <ctype.h>
-#include <string.h>
-#include <assert.h>
-
 #include "dsp_cpu.h"
 #include "dsp_dma.h"
 #include "dsp_state.h"
-
 #include "dsp.h"
+#include "debug.h"
 
 /* Defines */
 #define BITMASK(x)  ((1<<(x))-1)
@@ -41,16 +36,6 @@
 #define INTERRUPT_ABORT_FRAME (1 << 0)
 #define INTERRUPT_START_FRAME (1 << 1)
 #define INTERRUPT_DMA_EOL (1 << 7)
-
-// #define DEBUG_DSP
-
-#ifdef DEBUG_DSP
-#define DPRINTF(fmt, ...) \
-    do { fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
-#else
-#define DPRINTF(fmt, ...) \
-    do { } while (0)
-#endif
 
 static uint32_t read_peripheral(dsp_core_t* core, uint32_t address);
 static void write_peripheral(dsp_core_t* core, uint32_t address, uint32_t value);
@@ -201,7 +186,7 @@ void dsp_bootstrap(DSPState* dsp)
         (uint8_t*)dsp->core.pram, 0, 0x800*4, false);
     for (int i = 0; i < 0x800; i++) {
         if (dsp->core.pram[i] & 0xff000000) {
-            DPRINTF(stderr, "Bootstrap %04x: %08x\n", i, dsp->core.pram[i]);
+            DPRINTF("Bootstrap %04x: %08x\n", i, dsp->core.pram[i]);
             dsp->core.pram[i] &= 0x00ffffff;
         }
     }
