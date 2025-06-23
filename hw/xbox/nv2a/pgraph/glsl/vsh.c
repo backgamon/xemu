@@ -244,7 +244,13 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
             break;
         }
 
-        mstring_append(body, "  oFog = NaNToOne(vec4(fogFactor));\n");
+        /* Fog is clamped to min/max normal float values here to match HW
+         * interpolation. It is then clamped to [0,1] in the pixel shader.
+         */
+        // clang-format off
+        mstring_append(body,
+                       "  oFog = clamp(NaNToOne(vec4(fogFactor)), -3.4028234663852886e+38, 3.4028234663852886e+38);\n");
+        // clang-format on
     } else {
         /* FIXME: Is the fog still calculated / passed somehow?!
          */
