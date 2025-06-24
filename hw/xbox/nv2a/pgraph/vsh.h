@@ -186,24 +186,25 @@ typedef struct {
     enum ShaderPolygonMode polygon_back_mode;
     enum ShaderPrimitiveMode primitive_mode;
 
-    bool is_fixed_function;
-    FixedFunctionVshState fixed_function;
-    ProgrammableVshState programmable;
-
     bool fog_enable;
     enum VshFogMode fog_mode;
+
     bool specular_enable;
     bool separate_specular;
     bool ignore_specular_alpha;
     float specular_power;
     float specular_power_back;
 
-    bool z_perspective;
     bool point_params_enable;
     float point_size;
     float point_params[8];
 
     bool smooth_shading;
+    bool z_perspective;
+
+    bool is_fixed_function;
+    FixedFunctionVshState fixed_function;
+    ProgrammableVshState programmable;
 } VshState;
 
 #endif
