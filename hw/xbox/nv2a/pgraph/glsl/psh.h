@@ -36,6 +36,10 @@
 #define PSH_UBO_BINDING 1
 #define PSH_TEX_BINDING 2
 
-MString *pgraph_gen_psh_glsl(const PshState state);
+typedef struct GenPshGlslOptions {
+    bool vulkan;
+} GenPshGlslOptions;
+
+MString *pgraph_gen_psh_glsl(const PshState state, GenPshGlslOptions opts);
 
 #endif

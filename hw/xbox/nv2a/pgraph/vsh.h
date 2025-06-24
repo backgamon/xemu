@@ -175,8 +175,6 @@ typedef struct ProgrammableVshState {
 } ProgrammableVshState;
 
 typedef struct {
-    bool vulkan;
-    bool use_push_constants_for_uniform_attrs;
     unsigned int surface_scale_factor;  // FIXME: Remove
 
     uint16_t compressed_attrs;
