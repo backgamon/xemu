@@ -49,6 +49,96 @@ uint32_t pgraph_get_color_key_mask_for_texture(PGRAPHState *pg, int i)
     return get_colorkey_mask(color_format);
 }
 
+static FixedFunctionVshState get_fixed_function_vsh_state(PGRAPHState *pg)
+{
+    FixedFunctionVshState ff;
+
+    // We will hash it, so make sure any padding is zeroed
+    memset(&ff, 0, sizeof(ff));
+
+    ff.skinning = (enum VshSkinning)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
+                                             NV_PGRAPH_CSV0_D_SKIN);
+    ff.lighting =
+        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LIGHTING);
+    ff.normalization = pgraph_reg_r(pg, NV_PGRAPH_CSV0_C) &
+                       NV_PGRAPH_CSV0_C_NORMALIZATION_ENABLE;
+
+    /* color material */
+    ff.emission_src = (enum MaterialColorSource)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_EMISSION);
+    ff.ambient_src = (enum MaterialColorSource)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_AMBIENT);
+    ff.diffuse_src = (enum MaterialColorSource)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_DIFFUSE);
+    ff.specular_src = (enum MaterialColorSource)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_SPECULAR);
+
+    ff.local_eye =
+        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LOCALEYE);
+
+    /* Texture matrices */
+    for (int i = 0; i < 4; i++) {
+        ff.texture_matrix_enable[i] = pg->texture_matrix_enable[i];
+    }
+
+    /* Texgen */
+    for (int i = 0; i < 4; i++) {
+        unsigned int reg = (i < 2) ? NV_PGRAPH_CSV1_A : NV_PGRAPH_CSV1_B;
+        for (int j = 0; j < 4; j++) {
+            unsigned int masks[] = {
+                (i % 2) ? NV_PGRAPH_CSV1_A_T1_S : NV_PGRAPH_CSV1_A_T0_S,
+                (i % 2) ? NV_PGRAPH_CSV1_A_T1_T : NV_PGRAPH_CSV1_A_T0_T,
+                (i % 2) ? NV_PGRAPH_CSV1_A_T1_R : NV_PGRAPH_CSV1_A_T0_R,
+                (i % 2) ? NV_PGRAPH_CSV1_A_T1_Q : NV_PGRAPH_CSV1_A_T0_Q
+            };
+            ff.texgen[i][j] =
+                (enum VshTexgen)GET_MASK(pgraph_reg_r(pg, reg), masks[j]);
+        }
+    }
+
+    /* Lighting */
+    if (ff.lighting) {
+        for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
+            ff.light[i] =
+                (enum VshLight)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
+                                        NV_PGRAPH_CSV0_D_LIGHT0 << (i * 2));
+        }
+    }
+
+    if (pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3) & NV_PGRAPH_CONTROL_3_FOGENABLE) {
+        ff.foggen = (enum VshFoggen)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
+                                             NV_PGRAPH_CSV0_D_FOGGENMODE);
+    }
+
+    return ff;
+}
+
+static ProgrammableVshState get_programmable_vsh_state(PGRAPHState *pg)
+{
+    ProgrammableVshState prog;
+
+    // We will hash it, so make sure any padding is zeroed
+    memset(&prog, 0, sizeof(prog));
+
+    int program_start = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
+                                 NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START);
+
+    // copy in vertex program tokens
+    prog.program_length = 0;
+    for (int i = program_start; i < NV2A_MAX_TRANSFORM_PROGRAM_LENGTH; i++) {
+        uint32_t *cur_token = (uint32_t *)&pg->program_data[i];
+        memcpy(&prog.program_data[prog.program_length], cur_token,
+               VSH_TOKEN_SIZE * sizeof(uint32_t));
+        prog.program_length++;
+
+        if (vsh_get_field(cur_token, FLD_FINAL)) {
+            break;
+        }
+    }
+
+    return prog;
+}
+
 static VshState get_vsh_state(PGRAPHState *pg)
 {
     VshState vsh;
@@ -62,9 +152,6 @@ static VshState get_vsh_state(PGRAPHState *pg)
     bool fixed_function = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
                                    NV_PGRAPH_CSV0_D_MODE) == 0;
 
-    int program_start = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
-                                 NV_PGRAPH_CSV0_C_CHEOPS_PROGRAM_START);
-
     assert(vertex_program || fixed_function);
 
     vsh.surface_scale_factor = pg->surface_scale_factor;
@@ -74,53 +161,14 @@ static VshState get_vsh_state(PGRAPHState *pg)
     vsh.swizzle_attrs = pg->swizzle_attrs;
 
     vsh.is_fixed_function = fixed_function;
+    if (fixed_function) {
+        vsh.fixed_function = get_fixed_function_vsh_state(pg);
+    } else {
+        vsh.programmable = get_programmable_vsh_state(pg);
+    }
+
     vsh.specular_enable = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
                                    NV_PGRAPH_CSV0_C_SPECULAR_ENABLE);
-
-    /* fixed function stuff */
-    if (fixed_function) {
-        vsh.fixed_function.skinning = (enum VshSkinning)GET_MASK(
-            pgraph_reg_r(pg, NV_PGRAPH_CSV0_D), NV_PGRAPH_CSV0_D_SKIN);
-        vsh.fixed_function.lighting = GET_MASK(
-            pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LIGHTING);
-        vsh.fixed_function.normalization =
-            pgraph_reg_r(pg, NV_PGRAPH_CSV0_C) &
-            NV_PGRAPH_CSV0_C_NORMALIZATION_ENABLE;
-
-        /* color material */
-        vsh.fixed_function.emission_src = (enum MaterialColorSource)GET_MASK(
-            pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_EMISSION);
-        vsh.fixed_function.ambient_src = (enum MaterialColorSource)GET_MASK(
-            pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_AMBIENT);
-        vsh.fixed_function.diffuse_src = (enum MaterialColorSource)GET_MASK(
-            pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_DIFFUSE);
-        vsh.fixed_function.specular_src = (enum MaterialColorSource)GET_MASK(
-            pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_SPECULAR);
-
-        vsh.fixed_function.local_eye = GET_MASK(
-            pgraph_reg_r(pg, NV_PGRAPH_CSV0_C), NV_PGRAPH_CSV0_C_LOCALEYE);
-
-        /* Texture matrices */
-        for (int i = 0; i < 4; i++) {
-            vsh.fixed_function.texture_matrix_enable[i] =
-                pg->texture_matrix_enable[i];
-        }
-
-        /* Texgen */
-        for (int i = 0; i < 4; i++) {
-            unsigned int reg = (i < 2) ? NV_PGRAPH_CSV1_A : NV_PGRAPH_CSV1_B;
-            for (int j = 0; j < 4; j++) {
-                unsigned int masks[] = {
-                    (i % 2) ? NV_PGRAPH_CSV1_A_T1_S : NV_PGRAPH_CSV1_A_T0_S,
-                    (i % 2) ? NV_PGRAPH_CSV1_A_T1_T : NV_PGRAPH_CSV1_A_T0_T,
-                    (i % 2) ? NV_PGRAPH_CSV1_A_T1_R : NV_PGRAPH_CSV1_A_T0_R,
-                    (i % 2) ? NV_PGRAPH_CSV1_A_T1_Q : NV_PGRAPH_CSV1_A_T0_Q
-                };
-                vsh.fixed_function.texgen[i][j] =
-                    (enum VshTexgen)GET_MASK(pgraph_reg_r(pg, reg), masks[j]);
-            }
-        }
-    }
 
     vsh.separate_specular = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_C),
                                      NV_PGRAPH_CSV0_C_SEPARATE_SPECULAR);
@@ -159,23 +207,6 @@ static VshState get_vsh_state(PGRAPHState *pg)
                                   NV_PGRAPH_CONTROL_3_SHADEMODE) ==
                          NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH;
 
-    if (vertex_program) {
-        // copy in vertex program tokens
-        vsh.programmable.program_length = 0;
-        for (int i = program_start; i < NV2A_MAX_TRANSFORM_PROGRAM_LENGTH;
-             i++) {
-            uint32_t *cur_token = (uint32_t *)&pg->program_data[i];
-            memcpy(
-                &vsh.programmable.program_data[vsh.programmable.program_length],
-                cur_token, VSH_TOKEN_SIZE * sizeof(uint32_t));
-            vsh.programmable.program_length++;
-
-            if (vsh_get_field(cur_token, FLD_FINAL)) {
-                break;
-            }
-        }
-    }
-
     /* Fog */
     vsh.fog_enable =
         pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3) & NV_PGRAPH_CONTROL_3_FOGENABLE;
@@ -184,21 +215,6 @@ static VshState get_vsh_state(PGRAPHState *pg)
         vsh.fog_mode =
             (enum VshFogMode)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
                                       NV_PGRAPH_CONTROL_3_FOG_MODE);
-        vsh.fixed_function.foggen = (enum VshFoggen)GET_MASK(
-            pgraph_reg_r(pg, NV_PGRAPH_CSV0_D), NV_PGRAPH_CSV0_D_FOGGENMODE);
-    } else {
-        /* FIXME: Do we still pass the fogmode? */
-        vsh.fog_mode = (enum VshFogMode)0;
-        vsh.fixed_function.foggen = (enum VshFoggen)0;
-    }
-
-    /* Lighting */
-    if (vsh.fixed_function.lighting) {
-        for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
-            vsh.fixed_function.light[i] =
-                (enum VshLight)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CSV0_D),
-                                        NV_PGRAPH_CSV0_D_LIGHT0 << (i * 2));
-        }
     }
 
     return vsh;

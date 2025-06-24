@@ -154,6 +154,26 @@ enum MaterialColorSource {
     MATERIAL_COLOR_SRC_SPECULAR,
 };
 
+typedef struct FixedFunctionVshState {
+    bool normalization;
+    bool texture_matrix_enable[4];
+    enum VshTexgen texgen[4][4];
+    enum VshFoggen foggen;
+    enum VshSkinning skinning;
+    bool lighting;
+    enum VshLight light[NV2A_MAX_LIGHTS];
+    enum MaterialColorSource emission_src;
+    enum MaterialColorSource ambient_src;
+    enum MaterialColorSource diffuse_src;
+    enum MaterialColorSource specular_src;
+    bool local_eye;
+} FixedFunctionVshState;
+
+typedef struct ProgrammableVshState {
+    uint32_t program_data[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH][VSH_TOKEN_SIZE];
+    int program_length;
+} ProgrammableVshState;
+
 typedef struct {
     bool vulkan;
     bool use_push_constants_for_uniform_attrs;
@@ -169,26 +189,8 @@ typedef struct {
     enum ShaderPrimitiveMode primitive_mode;
 
     bool is_fixed_function;
-    struct {
-        bool normalization;
-        bool texture_matrix_enable[4];
-        enum VshTexgen texgen[4][4];
-        enum VshFoggen foggen;
-        enum VshSkinning skinning;
-        bool lighting;
-        enum VshLight light[NV2A_MAX_LIGHTS];
-        enum MaterialColorSource emission_src;
-        enum MaterialColorSource ambient_src;
-        enum MaterialColorSource diffuse_src;
-        enum MaterialColorSource specular_src;
-        bool local_eye;
-    } fixed_function;
-
-    struct {
-        uint32_t program_data[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH]
-                             [VSH_TOKEN_SIZE];
-        int program_length;
-    } programmable;
+    FixedFunctionVshState fixed_function;
+    ProgrammableVshState programmable;
 
     bool fog_enable;
     enum VshFogMode fog_mode;
