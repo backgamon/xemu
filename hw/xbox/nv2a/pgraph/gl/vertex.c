@@ -24,6 +24,8 @@
 #include "debug.h"
 #include "renderer.h"
 
+#define GL_BUFFER_QUANTIZATION_ALIGNMENT 0x10000
+
 static void update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size,
                                  bool quick)
 {
@@ -195,6 +197,11 @@ void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
     NV2A_GL_DGROUP_END();
 }
 
+static inline GLsizeiptr quantize_buffer_alloc(GLsizeiptr min_size)
+{
+    return ROUND_UP(min_size, GL_BUFFER_QUANTIZATION_ALIGNMENT);
+}
+
 unsigned int pgraph_gl_bind_inline_array(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -223,8 +230,9 @@ unsigned int pgraph_gl_bind_inline_array(NV2AState *d)
 
     nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_2);
     glBindBuffer(GL_ARRAY_BUFFER, r->gl_inline_array_buffer);
-    glBufferData(GL_ARRAY_BUFFER, index_count * vertex_size, pg->inline_array,
-                 GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER,
+                 quantize_buffer_alloc(index_count * vertex_size),
+                 pg->inline_array, GL_STREAM_DRAW);
     pgraph_gl_bind_vertex_attributes(d, 0, index_count-1, true, vertex_size,
                                   index_count-1);
 
