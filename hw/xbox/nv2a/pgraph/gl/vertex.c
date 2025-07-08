@@ -24,7 +24,7 @@
 #include "debug.h"
 #include "renderer.h"
 
-#define GL_BUFFER_QUANTIZATION_ALIGNMENT 0x10000
+#define GL_BUFFER_QUANTIZATION_ALIGNMENT 0x20000
 
 static void update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size,
                                  bool quick)
