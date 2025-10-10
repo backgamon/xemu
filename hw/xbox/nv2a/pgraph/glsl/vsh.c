@@ -20,6 +20,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "vsh.h"
 #include "vsh-ff.h"
@@ -189,24 +190,7 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         "\n"
         "#define FLOAT_MAX uintBitsToFloat(0x7F7FFFFFu)\n"
         "\n"
-        "struct FeedbackData {\n"
-        "  vec4 oPos;\n"
-        "  vec4 oD0;\n"
-        "  vec4 oD1;\n"
-        "  vec4 oB0;\n"
-        "  vec4 oB1;\n"
-        "  vec4 oPts;\n"
-        "  vec4 oFog;\n"
-        "  vec4 oT0;\n"
-        "  vec4 oT1;\n"
-        "  vec4 oT2;\n"
-        "  vec4 oT3;\n"
-        "};\n"
-        "\n"
-        "layout(std430, binding = 0) buffer FeedbackBuffer {\n"
-        "  FeedbackData feedback[];\n"
-        "};\n"
-        "FeedbackData registerCarryoverState = feedback[gl_VertexID];\n"
+        "uniform samplerBuffer registerCarryoverSampler;\n"
         "\n"
         "vec4 oPos = vec4(0.0,0.0,0.0,1.0);\n"
         "vec4 oD0 = vec4(0.0,0.0,0.0,1.0);\n"
@@ -214,7 +198,7 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         "vec4 oB0 = vec4(0.0,0.0,0.0,1.0);\n"
         "vec4 oB1 = vec4(0.0,0.0,0.0,1.0);\n"
         "vec4 oPts = vec4(0.0,0.0,0.0,1.0);\n"
-        "out vec4 oFog = registerCarryoverState.oFog;\n"
+        "vec4 oFog = vec4(0.0,0.0,0.0,1.0);\n"
         "vec4 oT0 = vec4(0.0,0.0,0.0,1.0);\n"
         "vec4 oT1 = vec4(0.0,0.0,0.0,1.0);\n"
         "vec4 oT2 = vec4(0.0,0.0,0.0,1.0);\n"
@@ -255,21 +239,26 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
                                false, opts.prefix_outputs, false);
 
     if (opts.prefix_outputs) {
-        mstring_append(header,
-                       "#define vtxD0 v_vtxD0\n"
-                       "#define vtxD1 v_vtxD1\n"
-                       "#define vtxB0 v_vtxB0\n"
-                       "#define vtxB1 v_vtxB1\n"
-                       "#define vtxFog v_vtxFog\n"
-                       "#define vtxT0 v_vtxT0\n"
-                       "#define vtxT1 v_vtxT1\n"
-                       "#define vtxT2 v_vtxT2\n"
-                       "#define vtxT3 v_vtxT3\n"
-                       "#define vtxPos0 v_vtxPos0\n"
-                       "#define vtxPos1 v_vtxPos1\n"
-                       "#define vtxPos2 v_vtxPos2\n"
-                       "#define triMZ v_triMZ\n"
-                       );
+        mstring_append_fmt(header,
+                           "#define vtxD0 v_vtxD0\n"
+                           "#define vtxD1 v_vtxD1\n"
+                           "#define vtxB0 v_vtxB0\n"
+                           "#define vtxB1 v_vtxB1\n"
+                           "#define vtxFog v_vtxFog\n"
+                           "#define vtxT0 v_vtxT0\n"
+                           "#define vtxT1 v_vtxT1\n"
+                           "#define vtxT2 v_vtxT2\n"
+                           "#define vtxT3 v_vtxT3\n"
+                           "#define vtxPos0 v_vtxPos0\n"
+                           "#define vtxPos1 v_vtxPos1\n"
+                           "#define vtxPos2 v_vtxPos2\n"
+                           "#define triMZ v_triMZ\n"
+                           "out vec4 v_registerState[%d];\n"
+                           "#define registerState v_registerState\n",
+                           NV2A_VSH_OUTPUT_REGISTER_COUNT);
+    } else {
+        mstring_append_fmt(header, "out vec4 registerState[%d];\n",
+                           NV2A_VSH_OUTPUT_REGISTER_COUNT);
     }
     mstring_append(header, "\n");
 
@@ -303,7 +292,19 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
 
     mstring_append(header, "\n");
 
-    MString *body = mstring_from_str("void main() {\n");
+    MString *body = mstring_from_str(
+        "void main() {\n"
+        "  oPos = texelFetch(registerCarryoverSampler, 0);\n"
+        "  oD0 = texelFetch(registerCarryoverSampler, 1);\n"
+        "  oD1 = texelFetch(registerCarryoverSampler, 2);\n"
+        "  oB0 = texelFetch(registerCarryoverSampler, 3);\n"
+        "  oB1 = texelFetch(registerCarryoverSampler, 4);\n"
+        "  oPts = texelFetch(registerCarryoverSampler, 5);\n"
+        "  oFog = texelFetch(registerCarryoverSampler, 6);\n"
+        "  oT0 = texelFetch(registerCarryoverSampler, 7);\n"
+        "  oT1 = texelFetch(registerCarryoverSampler, 8);\n"
+        "  oT2 = texelFetch(registerCarryoverSampler, 9);\n"
+        "  oT3 = texelFetch(registerCarryoverSampler, 10);\n");
 
     for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
         if (state->compressed_attrs & (1 << i)) {
@@ -330,6 +331,9 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
                                state->surface_scale_factor);
         }
     }
+
+    /* Store the raw oFog value so it may be carried over to the next draw. */
+    mstring_append(body, "  vec4 vshFog = oFog;\n");
 
     if (!state->fog_enable) {
         /* FIXME: Is the fog still calculated / passed somehow?! */
@@ -460,11 +464,24 @@ MString *pgraph_glsl_gen_vsh(const VshState *state, GenVshGlslOptions opts)
         );
     }
 
-    mstring_append(body, "}\n");
+    mstring_append(body,
+                   "  registerState[0] = oPos;\n"
+                   "  registerState[1] = vtxD0;\n"
+                   "  registerState[2] = vtxD1;\n"
+                   "  registerState[3] = vtxB0;\n"
+                   "  registerState[4] = vtxB1;\n"
+                   "  registerState[5].x = gl_PointSize;\n"
+                   "  registerState[6] = vshFog;\n"
+                   "  registerState[7] = vtxT0;\n"
+                   "  registerState[8] = vtxT1;\n"
+                   "  registerState[9] = vtxT2;\n"
+                   "  registerState[10] = vtxT3;\n"
+                   "}\n"
+                   );
 
     /* Return combined header + source */
     MString *output =
-        mstring_from_fmt("#version %d\n\n", opts.vulkan ? 450 : 430);
+        mstring_from_fmt("#version %d\n\n", opts.vulkan ? 450 : 410);
 
     if (opts.vulkan) {
         // FIXME: Optimize uniforms
