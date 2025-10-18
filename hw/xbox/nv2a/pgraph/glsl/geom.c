@@ -353,18 +353,21 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
     assert(layout_in);
     assert(layout_out);
     assert(body);
-    MString *output =
-        mstring_from_fmt("#version %d\n\n"
-                         "%s"
-                         "%s"
-                         "in vec4 v_registerState[][%d];\n"
-                         "out vec4 registerState[%d];\n"
-                         "\n"
-                         "#define v_vtxPos v_vtxPos0\n"
-                         "\n",
-                         opts.vulkan ? 450 : 400, layout_in, layout_out,
-                         NV2A_VSH_OUTPUT_REGISTER_COUNT,
-                         NV2A_VSH_OUTPUT_REGISTER_COUNT);
+
+#define DECL_VSH_REG(prefix, name) \
+    "in vec4 " #prefix "registerState" #name "[];\n" \
+    "out vec4 registerState" #name ";\n"
+
+    MString *output = mstring_from_fmt(
+        "#version %d\n\n"
+        "%s"
+        "%s"
+        DECL_VSH_REGISTER_STATES(v_)
+        "\n"
+        "#define v_vtxPos v_vtxPos0\n"
+        "\n",
+        opts.vulkan ? 450 : 400, layout_in, layout_out);
+#undef DECL_VSH_REG
     pgraph_glsl_get_vtx_header(output, opts.vulkan, state->smooth_shading, true,
                                true, true);
     pgraph_glsl_get_vtx_header(output, opts.vulkan, state->smooth_shading,
@@ -415,17 +418,22 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
         "  vtxPos0 = pz[0];\n"
         "  vtxPos1 = pz[1];\n"
         "  vtxPos2 = pz[2];\n"
-        "  triMZ = (isnan(pz[3].x) || isinf(pz[3].x)) ? 0.0 : pz[3].x;\n"
-        "  for (int j = 0; j < %d; ++j) {\n"
-        "    registerState[j] = v_registerState[index][j];\n"
-        "  }\n"
-        "  EmitVertex();\n"
-        "}\n",
+        "  triMZ = (isnan(pz[3].x) || isinf(pz[3].x)) ? 0.0 : pz[3].x;\n",
         provoking_index,
         provoking_index,
         provoking_index,
-        provoking_index,
-        NV2A_VSH_OUTPUT_REGISTER_COUNT);
+        provoking_index);
+
+#define DECL_VSH_REG(prefix, name) \
+    "  registerState" #name " = " #prefix "registerState" #name "[index];\n"
+
+    // clang-format off
+    mstring_append(output,
+                   DECL_VSH_REGISTER_STATES(v_)
+                   "  EmitVertex();\n"
+                   "}\n");
+    // clang-format on
+#undef DECL_VSH_REG
 
     if (need_triz || need_quadz) {
         mstring_append(
