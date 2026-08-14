@@ -1576,6 +1576,7 @@ void MainMenuSystemView::Draw()
                    xemu_settings_set_string(&g_config.sys.files.eeprom_path, path);
                    m_dirty = true;
                });
+    m_eeprom_editor.Draw(g_config.sys.files.eeprom_path, &m_dirty);
 }
 
 static const char **XbePatchProfilePath(XbePatchProfile *profile, int index)
